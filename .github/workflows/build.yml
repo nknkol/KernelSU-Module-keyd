@@ -28,7 +28,7 @@ jobs:
         id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: 'r28c' # 根据keyd项目的需要调整
+          ndk-version: 'r28b' # 根据keyd项目的需要调整
 
       - name: Set NDK_ROOT environment variable
         run: echo "NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
