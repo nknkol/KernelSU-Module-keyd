@@ -17,7 +17,7 @@ jobs:
             prop_path: 'version'
       - name: Archive
         run:  |
-          sudo zip -r KSU-Template.zip *  
+          sudo zip -r KSU-Keyd.zip *  
       - name: Release
         uses: meeDamian/github-release@master
         with:
@@ -25,7 +25,7 @@ jobs:
           tag: ${{steps.version.outputs.prop}}
           name: ${{steps.version.outputs.prop}}
           body: Please check [changelog](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md) for changes
-          files: KSU-Template.zip
+          files: KSU-Keyd.zip
           gzip: false
           draft: false
           prerelease: false
