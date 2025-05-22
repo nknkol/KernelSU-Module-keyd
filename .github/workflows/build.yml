@@ -7,13 +7,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # 步骤1: 检出项目B的代码
-      # 由于项目A (keyd) 在项目B的 '.library' 文件夹中，
-      # 正常的 checkout 就会包含项目A的源代码。
-      # 如果 '.library' 是一个 Git submodule，则需要 'submodules: recursive'
-      - name: Checkout Project B (including Project A in .library)
+      - name: Checkout Project B (including Project A in .library/keyd)
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive' # 如果 .library 是 submodule，则保留此行；否则可以移除
+          submodules: 'recursive' # 如果 .library/keyd 是 submodule，保留此行；否则它无害但非必需
           persist-credentials: false
           fetch-depth: 0
 
@@ -21,42 +18,53 @@ jobs:
       - name: Set up JDK (if Project A/keyd needs it)
         uses: actions/setup-java@v4
         with:
-          java-version: '17' # 根据需要调整
+          java-version: '17'
           distribution: 'temurin'
 
       - name: Setup Android NDK (for Project A/keyd)
         id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: 'r28b' # 根据keyd项目的需要调整
+          # **重要**: 请确认 'r28b' 是 nttld/setup-ndk@v1 支持且可下载的 NDK 版本。
+          # 你之前用 'r28d' 时遇到过 404 错误。如果 'r28b' 也有问题，请换用一个已知的有效版本，例如 'r26d' 或 'r25c'。
+          ndk-version: 'r28b'
 
       - name: Set NDK_ROOT environment variable
         run: echo "NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
 
       # 步骤3: 编译项目A (keyd)
-      # working-directory 设置为包含项目A (keyd) 源代码的 .library 目录
       - name: Build Project A (keyd)
-        working-directory: ./.library/keyd # 项目A (keyd) 的源代码在 .library 文件夹中
+        # working-directory 设置为项目A (keyd) 的源代码根目录
+        working-directory: ./.library/keyd
         run: |
-          echo "Building Project A (keyd) from ./.library directory..."
+          # 修改了 echo 信息以匹配 working-directory
+          echo "Building Project A (keyd) from ./.library/keyd directory..."
+          # 假设 Makefile.android 位于 ./.library/keyd/ 目录下
           make -f Makefile.android APP_VERSION="2.5.0-custom-android" NDK_ROOT="${{ env.NDK_ROOT }}"
 
       # 步骤4: 将项目A (keyd) 的产物复制到项目B的 system/bin 目录
       - name: Copy Project A (keyd) artifact to Project B's system/bin
         run: |
           echo "Creating directory ./system/bin/ if it doesn't exist (in Project B's root)..."
-          mkdir -p ./system/bin # 在项目B的根目录下创建 system/bin
+          mkdir -p ./system/bin
 
           echo "Copying Project A (keyd) artifact..."
-          cp ./.library/keyd/bin/keyd ./system/bin/keyd  # <--- 源路径需要你确认和修改!
+          # **非常重要**: 请你务必确认此路径!
+          # 这个路径假设 'make' 命令在 './.library/keyd' 目录执行后,
+          # 生成的 'keyd' 二进制文件位于 './.library/keyd/bin/keyd'。
+          # 如果实际产物路径是 './.library/keyd/keyd' (即直接在工作目录下)，
+          # 则应修改为: cp ./.library/keyd/keyd ./system/bin/keyd
+          cp ./.library/keyd/bin/keyd ./system/bin/keyd
           
           echo "Project A (keyd) artifact copied to ./system/bin/keyd"
-          ls -l ./system/bin # 显示一下复制结果
+          ls -l ./system/bin
 
-      # --- 下面是项目B原有的步骤 (Get version, Archive, Release, Cleanup) ---
+      # --- 下面是项目B原有的步骤 ---
       - name: Get version from Project B's update.json
         id: version
-        uses: notiz-dev/github-action-json-property@master
+        # **修复 set-output 警告**: 将 @master 替换为最新的稳定版本标签
+        # 请查找 notiz-dev/github-action-json-property 的最新稳定版本 (例如 v0.4.0 或更高)
+        uses: notiz-dev/github-action-json-property@v0.4.0 # <--- 修改这里，使用具体版本号
         with:
             path: 'update.json'
             prop_path: 'version'
@@ -64,11 +72,11 @@ jobs:
       - name: Archive Project B (includes keyd from Project A)
         run: |
           echo "Archiving Project B contents..."
-          # 这个zip命令会打包当前工作目录的所有内容，包括 ./system/bin/keyd
-          sudo zip -r KSU-Keyd.zip . -x ".git/*" -x ".github/*" # 排除 .git 和 .github
+          # 打包当前目录所有内容，并排除 .git 和 .github 目录
+          sudo zip -r KSU-Keyd.zip . -x ".git/*" -x ".github/*"
 
       - name: Release Project B
-        uses: meeDamian/github-release@v2.0.1 # 建议使用具体版本
+        uses: meeDamian/github-release@v2.0.1 # 使用具体版本是好的
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.version.outputs.prop }}
