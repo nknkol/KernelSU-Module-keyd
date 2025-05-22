@@ -1,6 +1,6 @@
-# KernelSU Module Template
+# KernelSU Module
 
-**A Template Module for KernelSU**
+**A Keyd Module for KernelSU**
 
 ## Install
 - Download **[latest release](https://github.com/SchweGELBin/KernelSU-Module-Template/releases/latest/download/KSU-Template.zip)**
