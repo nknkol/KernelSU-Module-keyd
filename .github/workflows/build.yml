@@ -68,7 +68,7 @@ jobs:
           sudo zip -r KSU-Keyd.zip . -x ".git/*" -x ".github/*" # 排除 .git 和 .github
 
       - name: Release Project B
-        uses: meeDamian/github-release@v2.0.1 # 建议使用具体版本
+        uses: meeDamian/github-release@master # 建议使用具体版本
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.version.outputs.prop }}
