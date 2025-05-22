@@ -1,3 +1,6 @@
 [submodule "library/keyd"]
 	path = .library/keyd
 	url = https://github.com/nknkol/keyd.git
+[submodule ".library/keyd"]
+	path = .library/keyd
+	url = https://github.com/nknkol/keyd.git
