@@ -1,0 +1,144 @@
+name: CI Beta/Test Build Project
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_version: # 和 build_release.yml 中的一样，用于项目 A (keyd)
+        description: 'App Version for Project A (keyd)'
+        required: true
+        default: '2.5.0-custom-beta' # 可以给一个默认的 beta 版本号
+      android_vkbd_backend: # 和 build_release.yml 中的一样
+        description: 'ANDROID_VKBD_BACKEND for Project A (keyd) (stdout or uinput)'
+        required: false
+        default: 'uinput'
+        type: choice
+        options:
+        - uinput
+        - stdout
+      static_link: # 和 build_release.yml 中的一样
+        description: 'STATIC_LINK for Project A (keyd) (1 for static, 0 for dynamic)'
+        required: false
+        default: '1'
+        type: choice
+        options:
+        - '1'
+        - '0'
+      test_identifier: # 新增：用于标识测试版本的后缀
+        description: 'Identifier for test build (e.g., beta, rc1, test-myfeature)'
+        required: true
+        default: 'beta'
+
+jobs:
+  build_and_release_beta: # Job 名称可以区分一下
+    runs-on: ubuntu-latest
+    steps:
+      # 步骤1: 检出项目B的代码 (与 build_release.yml 相同)
+      - name: Checkout Project B (including Project A in .library)
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+          persist-credentials: false
+          fetch-depth: 0
+
+      # 步骤2: 设置编译项目A所需的环境 (与 build_release.yml 相同)
+      - name: Set up JDK (if Project A/keyd needs it)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android NDK (for Project A/keyd)
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: 'r28b'
+
+      - name: Set NDK_ROOT environment variable
+        run: echo "NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+
+      # 步骤3: 编译项目A (keyd) (与 build_release.yml 相同，使用输入的参数)
+      - name: Build Project A (keyd)
+        working-directory: ./.library/keyd
+        run: |
+          echo "Building Project A (keyd) with the following options for BETA/TEST:"
+          echo "APP_VERSION: ${{ github.event.inputs.app_version }}"
+          echo "ANDROID_VKBD_BACKEND: ${{ github.event.inputs.android_vkbd_backend }}"
+          echo "STATIC_LINK: ${{ github.event.inputs.static_link }}"
+          echo "NDK_ROOT: ${{ env.NDK_ROOT }}"
+
+          make -f Makefile.android \
+            APP_VERSION="${{ github.event.inputs.app_version }}" \
+            ANDROID_VKBD_BACKEND="${{ github.event.inputs.android_vkbd_backend }}" \
+            STATIC_LINK="${{ github.event.inputs.static_link }}" \
+            NDK_ROOT="${{ env.NDK_ROOT }}"
+
+      # 步骤4: 将项目A (keyd) 的产物复制到项目B的 system/bin 目录 (与 build_release.yml 相同)
+      - name: Copy Project A (keyd) artifact to Project B's system/bin
+        run: |
+          echo "Creating directory ./system/bin/ if it doesn't exist (in Project B's root)..."
+          mkdir -p ./system/bin
+
+          echo "Copying Project A (keyd) artifact..."
+          cp ./.library/keyd/bin/keyd ./system/bin/keyd
+          
+          echo "Project A (keyd) artifact copied to ./system/bin/keyd"
+          ls -l ./system/bin
+
+      # --- 项目B步骤 ---
+      # 获取 update.json 中的版本号，主要用于构成测试标签和名称的一部分
+      - name: Get base version from Project B's update.json
+        id: version
+        uses: notiz-dev/github-action-json-property@master
+        with:
+            path: 'update.json'
+            prop_path: 'version' # 例如获取到 "v3"
+
+      # 修改点：打包文件名
+      - name: Archive Project B for Beta/Test
+        id: archive_beta # 给这个步骤一个id，方便后续引用文件名
+        run: |
+          # 使用输入参数 test_identifier 和 run_number 来创建独特的文件名
+          # 例如： KSU-Keyd-v3-beta.123.zip (假设 run_number 是 123)
+          # 或者更简单： KSU-Keyd-beta-123.zip
+          # 为了简化，我们用 test_identifier 和 github.run_id (全局唯一)
+          # 你也可以选择其他组合，例如：
+          # BETA_ZIP_NAME="KSU-Keyd-${{ steps.version.outputs.prop }}-${{ github.event.inputs.test_identifier }}.${{ github.run_number }}.zip"
+          BETA_ZIP_NAME="KSU-Keyd-${{ github.event.inputs.test_identifier }}-${{ github.run_id }}.zip"
+          echo "Archiving Project B contents to ${BETA_ZIP_NAME}..."
+          sudo zip -r ${BETA_ZIP_NAME} . -x ".git/*" -x ".github/*"
+          echo "zip_name=${BETA_ZIP_NAME}" >> $GITHUB_OUTPUT # 将文件名输出，供后续步骤使用
+
+      # 修改点：Release 步骤
+      - name: Create Beta/Test Release for Project B
+        uses: meeDamian/github-release@master # 建议使用更具体的版本号，例如 @v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # 修改点：标签 (tag) - 包含 test_identifier 和 run_number 以确保唯一性
+          tag: "${{ steps.version.outputs.prop }}-${{ github.event.inputs.test_identifier }}.${{ github.run_number }}" # 例如 v3-beta.123
+          # 修改点：发布名称 (name)
+          name: "Test Build: ${{ steps.version.outputs.prop }}-${{ github.event.inputs.test_identifier }}.${{ github.run_number }}"
+          body: |
+            **THIS IS A TEST BUILD - USE WITH CAUTION**
+
+            Project B Base Version: ${{ steps.version.outputs.prop }}
+            Test Identifier: ${{ github.event.inputs.test_identifier }}
+            Run Number: ${{ github.run_number }}
+
+            ---
+            Keyd (Project A) Version: ${{ github.event.inputs.app_version }}
+            Keyd Backend: ${{ github.event.inputs.android_vkbd_backend }}
+            Keyd Linkage: ${{ github.event.inputs.static_link == '1' && 'Static' || 'Dynamic' }}
+
+            Please check [changelog](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md) for Project B changes.
+            (Note: This test build may contain unlisted changes or features under development.)
+          # 修改点：上传的文件名
+          files: ${{ steps.archive_beta.outputs.zip_name }}
+          gzip: false
+          draft: false # 通常测试版也是直接发布的，但可以设为 true 如果需要人工审核
+          # 修改点：标记为预发布
+          prerelease: true
+          allow_override: true # 如果需要覆盖同名标签的预发布（不推荐，最好保证标签唯一）
+
+      - name: Cleanup Beta/Test Artifact
+        run: |
+          rm ${{ steps.archive_beta.outputs.zip_name }}
