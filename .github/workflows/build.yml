@@ -76,7 +76,7 @@ jobs:
           sudo zip -r KSU-Keyd.zip . -x ".git/*" -x ".github/*"
 
       - name: Release Project B
-        uses: meeDamian/github-release@v2.0.1 # 使用具体版本是好的
+        uses: meeDamian/github-release@master # 使用具体版本是好的
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.version.outputs.prop }}
