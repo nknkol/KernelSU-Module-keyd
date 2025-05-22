@@ -1,0 +1,119 @@
+name: CI Build Project
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_version:
+        description: 'App Version for Project A (keyd)'
+        required: true
+        default: '2.5.0-custom-android'
+      android_vkbd_backend:
+        description: 'ANDROID_VKBD_BACKEND for Project A (keyd) (stdout or uinput)'
+        required: false
+        default: 'uinput'
+        type: choice
+        options:
+        - uinput
+        - stdout
+      static_link:
+        description: 'STATIC_LINK for Project A (keyd) (1 for static, 0 for dynamic)'
+        required: false
+        default: '1'
+        type: choice
+        options:
+        - '1'
+        - '0'
+
+jobs:
+  build_and_release:
+    runs-on: ubuntu-latest
+    steps:
+      # 步骤1: 检出项目B的代码
+      - name: Checkout Project B (including Project A in .library)
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive' # 如果 .library 是 submodule
+          persist-credentials: false
+          fetch-depth: 0
+
+      # 步骤2: 设置编译项目A所需的环境
+      - name: Set up JDK (if Project A/keyd needs it)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17' # 根据需要调整
+          distribution: 'temurin'
+
+      - name: Setup Android NDK (for Project A/keyd)
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: 'r28b' # 根据keyd项目的需要调整
+
+      - name: Set NDK_ROOT environment variable
+        run: echo "NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+
+      # 步骤3: 编译项目A (keyd)
+      - name: Build Project A (keyd)
+        working-directory: ./.library/keyd # 项目A (keyd) 的源代码在 .library 文件夹中
+        run: |
+          echo "Building Project A (keyd) with the following options:"
+          echo "APP_VERSION: ${{ github.event.inputs.app_version }}"
+          echo "ANDROID_VKBD_BACKEND: ${{ github.event.inputs.android_vkbd_backend }}"
+          echo "STATIC_LINK: ${{ github.event.inputs.static_link }}"
+          echo "NDK_ROOT: ${{ env.NDK_ROOT }}"
+
+          make -f Makefile.android \
+            APP_VERSION="${{ github.event.inputs.app_version }}" \
+            ANDROID_VKBD_BACKEND="${{ github.event.inputs.android_vkbd_backend }}" \
+            STATIC_LINK="${{ github.event.inputs.static_link }}" \
+            NDK_ROOT="${{ env.NDK_ROOT }}"
+
+      # 步骤4: 将项目A (keyd) 的产物复制到项目B的 system/bin 目录
+      - name: Copy Project A (keyd) artifact to Project B's system/bin
+        run: |
+          echo "Creating directory ./system/bin/ if it doesn't exist (in Project B's root)..."
+          mkdir -p ./system/bin # 在项目B的根目录下创建 system/bin
+
+          echo "Copying Project A (keyd) artifact..."
+          # 请再次确认这个源路径是否正确。通常编译产物可能在 bin/ Release/ 或者 build/ 目录下
+          # 例如： ./.library/keyd/bin/keyd 或 ./.library/keyd/build/keyd
+          cp ./.library/keyd/bin/keyd ./system/bin/keyd  # <--- 确认源路径!
+          
+          echo "Project A (keyd) artifact copied to ./system/bin/keyd"
+          ls -l ./system/bin # 显示一下复制结果
+
+      # --- 项目B原有的步骤 ---
+      - name: Get version from Project B's update.json
+        id: version
+        uses: notiz-dev/github-action-json-property@master
+        with:
+            path: 'update.json'
+            prop_path: 'version'
+
+      - name: Archive Project B (includes keyd from Project A)
+        run: |
+          echo "Archiving Project B contents..."
+          sudo zip -r KSU-Keyd.zip . -x ".git/*" -x ".github/*"
+
+      - name: Release Project B
+        uses: meeDamian/github-release@master # 考虑使用更具体的版本号，例如 @v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.version.outputs.prop }} # 或者使用 inputs.app_version 作为 tag 的一部分
+          name: ${{ steps.version.outputs.prop }} # 或者使用 inputs.app_version 作为 name 的一部分
+          body: |
+            Project B Version: ${{ steps.version.outputs.prop }}
+            Keyd (Project A) Version: ${{ github.event.inputs.app_version }}
+            Keyd Backend: ${{ github.event.inputs.android_vkbd_backend }}
+            Keyd Linkage: ${{ github.event.inputs.static_link == '1' && 'Static' || 'Dynamic' }}
+
+            Please check [changelog](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md) for Project B changes.
+          files: KSU-Keyd.zip
+          gzip: false
+          draft: false
+          prerelease: false
+          allow_override: true
+
+      - name: Cleanup
+        run: |
+          rm KSU-Keyd.zip
