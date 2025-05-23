@@ -1,0 +1,2 @@
+allow m_keyd self:uinput_device   chr_file { read write open ioctl };
+allow m_keyd input_device         chr_file { read write open ioctl };

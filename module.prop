@@ -1,7 +1,11 @@
-id=ksu-template
-name=KSU-Template
-version=v2
+id=keyd-android
+name=Keyd – 低延迟键位映射 (Android 版)
+version=2.5.0-custom-android
 versionCode=2
-author=SchweGELBin
-description=A Template Module for KernelSU
-updateJson=https://raw.githubusercontent.com/SchweGELBin/KernelSU-Module-Template/master/update.json
+author=Keyd
+description=\
+系统级键盘/鼠标重映射守护进程，\
+原生 AArch64 交叉编译，支持组合键、宏、层，\
+随 setprop 即时切换预设。\
+依赖 root + Magisk；无需 systemd/udev。
+updateJson=https://raw.githubusercontent.com/nknkol/KernelSU-Module-keyd/master/update.json
